@@ -29,15 +29,79 @@ tidy_books <- tidy_books %>% anti_join(stop_words)
 tidy_books %>% 
   dplyr::count(word, sort = T)
 
-
 ## ANOTHER EXAMPLE
 tidy_hgwells <- hgwells %>%
   unnest_tokens(word, text) %>% # row for each word
   anti_join(stop_words) %>% # removing stopwords 
   dplyr::count(word, sort = TRUE)
 
+# Adding a word the stopword dictionary
+custom_stop_words <- bind_rows(tibble(word = c("miss"), lexicon = c("custom")), stop_words)
 
-## STRINGER -------------------------------------------
+
+## SENTIMENT ANALYSIS WITH TIDY TEXT-------------------------------------------------------
+# Built-in sentiments
+head(sentiments) # positive/negative
+
+# Additional lexicons
+get_sentiments("afinn") # assigns numerical values
+get_sentiments("bing") # positive/negative
+get_sentiments("nrc") # expanded sentiments, e.g., joy, trust, fear, negative, sadness, anger
+
+# Selecting one sentiment from a lexicon
+nrcjoy <- get_sentiments("nrc") %>%
+  filter(sentiment == "joy")
+
+# Applying a sentiment lexicon to data
+nrcsents <- get_sentiments("nrc") # I could also only look for one sentiment, e.g., only joining my "joy" subset from above
+tidy_books %>% 
+  inner_join(nrcsents)
+
+# Example: comparing the amount of "joy" words in various books
+tidy_books %>% 
+  group_by(book) %>%
+  inner_join(nrcjoy) %>% 
+  count(word, sort = T) %>% 
+  group_by(book) %>% 
+  summarize(sum(n)) 
+
+# Example: 
+janeaustensentiment <- tidy_books %>%
+  inner_join(get_sentiments("bing")) %>% # applying a sentiment lexicon
+  count(book, index = linenumber %/% 80, sentiment) %>% # DF w/ # of each sentiment in eeach line, up to 80, for each book
+  spread(sentiment, n, fill = 0) %>% # Creates separate column for pos/neg sentiment (vs seprate rows for each)
+  mutate(sentiment = positive - negative) # creates net sentiment column
+
+# Example:
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>% # applying sentiment lexicon (gives sentiment of each word)
+  count(word, sentiment, sort = TRUE) %>% #  # totals by word, then by sentiment
+  ungroup()
+
+# Example with stopword dictionary 
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>% # applying sentiment lexicon (gives sentiment of each word)
+  count(word, sentiment, sort = TRUE) %>% # groups by word, then by sentiment
+  ungroup() %>%
+  anti_join(custom_stop_words) %>% # removing stopwords
+  group_by(sentiment) %>% 
+  top_n(10) # for each sentiment (previous line) show the top 10 most common words
+
+# Wordcloud vizualization (simple)
+tidy_books %>%
+  anti_join(stop_words) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+
+# Wordcloud vizualization (different colors for positive and negative sentiments)
+tidy_books %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("gray20","gray80"), max.words = 100)
+
+
+## STRINGER ----------------------------------------------------------------
 animals <- c("jaguar", "jay", "bat")
 
 # string detect
@@ -83,7 +147,6 @@ films <- starwars %>%
 title <- films %>%
   html_element("h2") %>%
   html_text2()
-
 
 # Use the html_attr() function to extract data out of attributes. html_attr() always returns a string so we convert it to an integer using a readr function
 episode <- films %>%
