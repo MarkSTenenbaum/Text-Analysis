@@ -43,7 +43,7 @@ custom_stop_words <- bind_rows(tibble(word = c("miss"), lexicon = c("custom")), 
 # Built-in sentiments
 head(sentiments) # positive/negative
 
-# Additional lexicons
+# Additional lexicons --------- Welbers et al. 2017 is useful for choosing a lexicon/strategy
 get_sentiments("afinn") # assigns numerical values
 get_sentiments("bing") # positive/negative
 get_sentiments("nrc") # expanded sentiments, e.g., joy, trust, fear, negative, sadness, anger
