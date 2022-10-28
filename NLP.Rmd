@@ -1,0 +1,617 @@
+---
+title: 'Lab 8: NLP: POS Tagging and NER'
+author: "YourName"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Technical Learning Objectives
+  - Understand the basics of Rmarkdown
+  - Understand text parsing and Parts of Speech (POS) tagging
+  - Understand the concept of Maximum Entropy (maxent) and how to conduct a POS tagging using various Maxent Annotator options
+  - Understand how to interpret the Penn Treebank POS tag codes
+  - Become familiar with some of the main NLP packages available for R (such as NLP, openNLP, coreNLP, cleanNLP) and the very powerful integration with Python NLP libraries in spaCy using reticulate and spacyr
+  - Understanding NLP in quanteda and tidytext
+
+## Business Learning Objectives
+
+  - Understand when and how to use Rmd for reproduceable data science
+  - Understand NLP alternative to the “Bag of Words” approach to text mining
+  - Understand what you gain and lose in POS tagging and NLP approaches.
+  - Understand the power of Named Entity Recognition (NER) for identifying dates, locations, money, organizations, people, percentages, and much more in a text corpus
+  - Understand how to integrate the Python spaCy libraries into R using reticulate and the spacyr package.
+  - Understand how to select the NLP packages to use for your needs
+
+# Assignment Overview
+
+As we have now entered Part III of the course, the remaining three labs build on what you have learned and contain more advanced techniques. These labs are not required to meet the MVP for this course. You may simply review instructions and submit the starter file to receive full credit for the lab. However, many of you want to learn and practice these techniques. If so, these three advanced labs are for you. For Lab 8, we will transition to a focus on Natural Language Processing (NLP) techniques. You will learn how to parse text and do Parts of Speech (POS) tagging. You will use that tagged text to do Named Entity Recognition (NER). In addition, this lab also marks a transition to using RMarkdown for labs. RMarkdown is a powerful tool for integrating text, code, R output, into the same document. There are three main parts to the lab:
+
+- Part 1: Parts of Speech Tagging: will guide you through the process of parsing your text and tagging the relevant parts of speech using openNLP, cleanNLP, and coreNLP. 
+
+- Part 2: Applying Named Entity Recognition:  introduces you to the concept of Maximum Entropy (Maxent) and applies the maxent annotations for persons, locations, organizations, and several others to the corpus.
+
+- Part 3: Conducting NLP Analysis with spacyr:  provides an introduction to NLP analysis in the quanteda and tidytext ecosystems. In quanteda and tidytext, NLP requires a tight integration with spacyr, the R environment for the powerful python spaCy libraries.
+
+# Optional Pre-Lab Instructions (please review before class or viewing the recording)
+
+For this lab, you will submit your lab assignment not as an R script (.R), but as an RMarkdown (.Rmd) file. To help ease in this transition, I will still provide you with these lab instructions and data for the lab, but I will not provide a starter script. Instead, I will provide you with a starter .Rmd file and show you how to create a new R Markdown file on your own if you wish. As I indicated above, given that this lab is more advanced and is not required, you may simply submit the starter .Rmd file, modified with your name for full credit. You may also work on any other portion of the lab you want to attempt to gain full credit for the lab. However, for those that really want to learn and practice these advanced techniques, I provide you with all the necessary materials. 
+
+Install any of the additional libraries that may be new for you:
+
+```{r}
+# install.packages("openNLP")
+# install.packages("sentimentr")
+# install.packages("coreNLP")
+# install.packages("cleanNLP")
+# install.packages("magrittr")
+# install.packages("NLP")
+# install.packages("ggmap")
+# install.packages("gridExtra")
+# install.packages("ggthemes")
+# install.packages("purrr")
+# install.packages("doBy")
+# install.packages("cshapes")
+# install.packages("rJava")
+# install.packages("sotu")
+# install.packages("spacyr")
+# install.packages("tinytex")
+```
+
+If you haven't done it already, you need to install the openNLPmodels.en from an outside repository.
+
+```{r}
+install.packages("openNLPmodels.en", repos = "http://datacube.wu.ac.at/", type = "source")
+
+```
+
+Now, set up your R system environment
+
+```{r}
+options(stringsAsFactors = FALSE)
+Sys.setlocale("LC_ALL","C")
+lib.loc = "~/R/win-library/3.2"
+
+```
+
+Load all of the required libraries. 
+
+This first group of packages must be loaded before loading openNLP because ggplot2 (which will load when ggthemes loads) has a conflict with openNLP using a function called annotate(); and we want to use the function from openNLP (not ggplot2)
+
+```{r} 
+library(gridExtra)
+library(ggmap)
+library(ggthemes)
+```
+
+# Then load these libraries
+
+```{r}
+library(NLP)
+library(openNLP)
+library(openNLPmodels.en) 
+library(pbapply)
+library(stringr)
+library(rvest)
+library(doBy)
+library(tm)
+library(cshapes)
+library(purrr)
+library(pbapply)
+library(dplyr)
+library(spacyr)
+library(tinytex) # This package is required to enable R Markdown to Knit to PDF.
+```
+
+These are some additional packages you may need to load, but not for now.
+
+```{r}
+library(rJava)
+library(coreNLP)
+library(sentimentr)
+library(cleanNLP)
+library(dplyr)
+library(magrittr)
+```
+
+### Just a note on rJava
+
+When you load rJava, you may have an issue with not having a Java Virtual Machine (JVM) for Java Runtime Environment (JRE) loaded on your computer. If so, you may go to Java.com to download the appropriate version. Here is the link to install on a Mac: https://www.java.com/en/download/mac_download.jsp. However, please note, openNLP may not compatible with the most recent version of Java 8 (12), so you should use the last stable version of Java 8 (11).
+
+### Preparing for the spayr part of the lab.
+
+To begin, install the spacyr package. This process also installs the various dependencies for spacyr, including: RcppTOML, here, and reticulate. The first time, it may take a little while.
+
+```{r}
+install.packages("spacyr")
+```
+
+Now, load the spacyr package.
+
+```{r}
+library(spacyr)
+```
+
+The next step is to “initialize” spacyr. However, before you can initialize spacy, you must complete an install of a miniconda environment. If you would like more detail, the tutorial below will walk you through loading the miniconda environment: https://spacyr.quanteda.io. 
+
+This gets a little complicated, but essentially, what you need to do is run the following function:
+
+```{r}
+ spacy_install()
+```
+
+Be forewarned, this function is going to install quite a bit of additional and dependent packages, and will take some time. You definitely want to comment out this function once you have installed spacy and its dependencies.
+
+You should hopefully eventually get the following message in your console.
+
+Once you get this message, you are ready to initialize spacy with the spacy_initialize function. Note the "model" in the argument is calling the smaller version of the English tokenizer (the larger one is "en_core_web_lg").
+
+```{r}
+
+ spacy_initialize(model="en_core_web_sm")
+```
+
+If your initialization is successful, you are now ready to use the spacyr package for NLP.
+
+# End of Pre-Lab
+
+# Part 1: Parts of Speech Tagging in openNLP
+
+Let's now focus on text parsing, named entity recognition, understanding a POS tokenizer in the openNLP package
+
+First, let's create some example text to start.
+
+```{r}
+s <- paste(c("Pierre Vinken, 61 years old, will join the board as a",
+"nonexecutive director Nov. 29.\n",
+"Mr. Vinken is chairman of Elsevier, N.V., ",
+"the Dutch publishing group."),
+collapse = "")
+s <- as.String(s)
+s
+```
+
+Now, let's create sentence and word token annotations.
+
+```{r}
+
+# sent_token_annatator <- Maxent_Sent_Token_Annotator()
+# word_token_annatator <- Maxent_Word_Token_Annotator()
+# a2 <- annotate(s, list(sent_token_annatator, word_token_annatator))
+# a2
+# pos_tag_annatator <- Maxent_POS_Tag_Annotator()
+# a3 <- annotate(s, pos_tag_annatator, a2)
+# a3
+# a3w <- subset(a3, type == "word")
+# a3w
+# tags <- sapply(a3w$features,"[[","POS")
+# tags
+# table(tags)
+
+```
+
+For more information on Parts of Speech (POS) tagging, please see: https://repository.upenn.edu/cgi/viewcontent.cgi?article=1603&context=cis_reports; and for a summary, please see: https://cs.nyu.edu/~grishman/jet/guide/PennPOS.html. 
+
+Now we will extract tokens/POS pairs (all of them):
+
+```{r}
+sprintf("%s/%s", s[a3w], tags)
+
+```
+
+# Part 2: Applying Named Entity Recognition (NER) to the Clinton Email Dataset
+
+Now, let's take these skills and apply them to a more substantial dataset. We will apply these skills to a subset of the infamous Secretary Clinton emails.
+
+We need to scan a folder in our working directory for multiple files representing the Hillary Clinton emails saved as .txt files. We will be using the list.files function and a wildcard added to the .txt file extension (*.txt) which will identify any file in that directory that ends in .txt. We will then create an object called "temp" that contains those emails.
+
+First, you may want to set your working directory, with the path leading  to the folder containing the emails.
+
+```{r}
+setwd("~/Library/Mobile Documents/com~apple~CloudDocs/PhD/Classes/")
+```
+
+Get Data & Organize
+
+```{r}
+tmp           <- list.files(path="~/Library/Mobile Documents/com~apple~CloudDocs/PhD/Classes/Fall 2022/Text analysis/Lab8 - NLP/C8_final_txts/", pattern = '*.txt', full.names = T)
+emails        <- pblapply(tmp, readLines)
+names(emails) <- gsub('.txt', '', list.files(pattern = '.txt'))
+```
+
+Let's now examine one (1) email:
+
+```{r}
+emails[[1]]
+```
+
+Now, let's create a custom function to clean the emails.
+
+```{r}
+txtClean <- function(x) {
+x <- x[-1]
+x <- paste(x,collapse = " ")
+x <- str_replace_all(x, "[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+", "")
+x <- str_replace_all(x, "Doc No.", "")
+x <- str_replace_all(x, "UNCLASSIFIED U.S. Department of State Case No.", "")
+x <- removeNumbers(x)
+x <- as.String(x)
+return(x)
+}
+```
+
+Now, as a test, we will apply the cleaning function to one email and observe what happens to it.
+
+```{r}
+
+txtClean(emails[[1]])[[1]]
+
+```
+
+Now, let's apply the cleaning function to all emails; and then review one email in the list.
+
+```{r}
+allEmails <- pblapply(emails,txtClean)
+allEmails[[2]][[1]][1]
+
+
+```
+
+Create POS tagging for persons, locations, and organizations; as well as individual models for sentences, words and parts of speech. This code load the pre-existing feature weights to be called by your R session, but they do not yet apply them to any text.
+
+```{r}
+persons <- Maxent_Entity_Annotator(kind='person')
+locations <- Maxent_Entity_Annotator(kind='location')
+organizations <- Maxent_Entity_Annotator(kind='organization')
+sentTokenAnnotator <- Maxent_Sent_Token_Annotator(language='en')
+wordTokenAnnotator <- Maxent_Word_Token_Annotator(language='en')
+posTagAnnotator <- Maxent_POS_Tag_Annotator(language='en')
+```
+
+## Understanding loops in R
+
+In R, "for loops" iterate for a controlled counter or an index, incremented at each iteration cycle. While "repeat loops" (with conditional clauses) break and next: based on the onset and verification of some logical condition.
+
+We will now annotate each document in a loop
+
+```{r}
+annotationsData <- list()
+for (i in 1:length(allEmails)){
+print(paste('starting annotations on doc', i))
+annotations <- annotate(allEmails[[i]], list(sentTokenAnnotator,
+wordTokenAnnotator,
+posTagAnnotator,
+persons,
+locations,
+organizations))
+annDF <- as.data.frame(annotations)[,2:5]
+annDF$features <- unlist(as.character(annDF$features))
+annotationsData[[tmp[i]]] <- annDF
+print(paste('finished annotations on doc', i))
+}
+
+
+```
+
+Annotations have character indices 
+
+Now obtain terms by index from each document using a NESTED loop 
+
+```{r}
+allData<- list()
+for (i in 1:length(allEmails)){
+x <- allEmails[[i]] # get an individual document
+y <- annotationsData[[i]] # get an individual doc's annotation information
+print(paste('starting document:',i, 'of', length(allEmails)))
+# for each row in the annotation information, extract the term by index
+POSls <- list()
+for(j in 1:nrow(y)){
+annoChars <- ((substr(x,y[j,2],y[j,3]))) #substring position
+# Organize information in data frame
+z <- data.frame(doc_id = i,
+type = y[j,1],
+start = y[j,2],
+end = y[j,3],
+features = y[j,4],
+text = as.character(annoChars))
+POSls[[j]] <- z
+#print(paste('getting POS:', j))
+}
+
+# Bind each documents annotations & terms from loop into a single DF
+docPOS <- do.call(rbind, POSls)
+
+# So each document will have an individual DF of terms, and annotations as a list element
+allData[[i]] <- docPOS
+}
+
+```
+
+Now we can subset for each document
+
+```{r}
+people       <- pblapply(allData, subset, grepl("*person", features))
+locaction    <- pblapply(allData, subset, grepl("*location", features))
+organization <- pblapply(allData, subset, grepl("*organization", features))
+
+people
+
+locaction #note location is misspelled here, it is also a dplyr function
+organization
+### Or if you prefer to work with flat objects make it a data frame w/all info
+POSdf <- do.call(rbind, allData)
+# Subsetting example w/2 conditions; people found in email 1
+subset(POSdf, POSdf$doc_id ==1 & grepl("*person", POSdf$features) == T)
+```
+
+Annotate Entities Process
+
+This final data frame contains not only persons, locations, and organizations, but also each detected sentence, word, and part of speech. To complete the named entity analysis, you may need to subset the data frame for specific features. The code below used the logical grep1 as a subset parameter for each entity class.
+
+```{r}
+annDF
+subset(annDF$words, grepl("*people", annDF$features) == T)
+subset(annDF$words, grepl("*locaction", annDF$features) == T)
+subset(annDF$words, grepl("*organization", annDF$features) == T)
+person
+
+
+```
+
+To define an annotation sequence, you create a list with the specific opeNLP models
+
+```{r}
+
+annotate.entities <- function(doc, annotation.pipeline) {
+annotations <- annotate(doc, annotation.pipeline)
+AnnotatedPlainTextDocument(doc, annotations)
+}
+ner.pipeline <- list(
+Maxent_Sent_Token_Annotator(),
+Maxent_Word_Token_Annotator(),
+Maxent_POS_Tag_Annotator(),
+Maxent_Entity_Annotator(kind = "person"),
+Maxent_Entity_Annotator(kind = "location"),
+Maxent_Entity_Annotator(kind = "organization")
+)
+all.ner <- pblapply(allEmails, annotate.entities, ner.pipeline)
+
+
+```
+
+Now that we have an annotation function that individually calls the models, we need to apply them to the entire email list either the lapply or the pblapply functions will work, but the pblapply is helpful because it provides a progress bar. Note, the pbapply package must be loaded. 
+
+```{r}
+
+all.ner
+all.ner <- pluck(all.ner, "annotations")
+all.ner <- pblapply(all.ner, as.data.frame)
+all.ner[[3]][244:250,]
+all.ner <- Map(function(tex,fea,id) cbind(fea, entity = substring(tex,fea$start, fea$end), file = id),
+all.emails, all.ner, temp)
+
+```
+
+# Part 3: Conducting NLP Analysis with spacyr
+
+Now, to practice with spacyr, let's create two sample "documents", parse them, and save in a data.table.
+
+```{r}
+
+txt <- c(d1 = "spaCy is great at fast natural language processing.",
+d2 = "Mr. Smith spent two years in North Carolina.")
+parsedtxt <- spacy_parse(txt)
+parsedtxt
+
+```
+
+In this analysis, we see two fields for POS tags (pos and entity). In this case the pos field returns the parts of speech as tagged using the Penn Treebank tagset. You may adjust the argument for the spacy_parse() function to determine what you get back. For example, you may choose to not generate the lemma or entity fields with the code chunk below:
+
+```{r}
+
+spacy_parse(txt, tag = TRUE, entity = FALSE, lemma = FALSE)
+
+```
+
+You may also parse and POS tag documents in multiple languages using over 70 other language models (some of these include: German (de), Spanish  (es), Portugese (pt), French (fr), Italian (it), Dutch(nl), and many others: See: https://spacy.io/usage/models#languages for a complete list)
+
+You may also use spacyr to directly parse text to tokenize, using the spacy_tokenize() function; this  approach is designed to match the tokens() functions within quanteda
+
+```{r}
+spacy_tokenize(txt)
+
+
+```
+
+The default returns a named list (where the document name, eg d1, d2 is the list element name). Or you may specify to output to a data.frame. Either way, make sure you have dplyr loaded.
+
+```{r}
+
+library(dplyr)
+spacy_tokenize(txt, remove_punct = TRUE, output = "data.frame") %>%
+tail()
+
+
+```
+
+You may also use spacyr to extract named entities from the parsed text.
+
+```{r}
+parsedtxt <- spacy_parse(txt, lemma = FALSE, entity = TRUE, nounphrase = TRUE)
+entity_extract(parsedtxt)
+
+
+```
+
+The following approach lets you extract the "extended" entity set:
+
+```{r}
+
+entity_extract(parsedtxt, type = "all")
+
+```
+
+Another interesting possibility is to "consolidate" multi-word entities into single tokens using the entity_consolidate() functions
+
+```{r}
+entity_consolidate(parsedtxt) %>%
+tail()
+
+
+```
+
+Similarly, spacyr can extract noun phrases
+
+```{r}
+
+nounphrase_extract(parsedtxt)
+
+```
+
+Noun phrases may also be consolidated
+
+```{r}
+nounphrase_consolidate(parsedtxt)
+
+
+```
+
+To only extract entities without parsing the entire text, you may use the spacy_extract_entity() function:
+
+```{r}
+
+spacy_extract_entity(txt)
+
+```
+
+Similarly, to extract noun phrases without parsing the entire text, you may use the spacy_extract_nounphrases() function:
+
+```{r}
+
+spacy_extract_nounphrases(txt)
+
+```
+
+For detailed parsing of syntactic dependencies, you may use the dependency=TRUE option in the argument
+
+```{r}
+spacy_parse(txt, dependency = TRUE, lemma = FALSE, pos = FALSE)
+
+
+```
+
+# You may also extract additional attributes of spaCy tokens using the additional_attributes option in the argument
+
+```{r}
+
+spacy_parse("I have six email addresses, including me@mymail.com.",
+additional_attributes = c("like_num", "like_email"),
+lemma = FALSE, pos = FALSE, entity = FALSE)
+
+
+```
+
+Take a moment to review this output and discuss why this was produced from the parsing request.
+
+You may also integrate the output from spacyr directly into quanteda. For example
+
+```{r}
+
+
+library(quanteda, warn.conflicts = FALSE, quietly = TRUE)
+# To identify the names of the documents
+docnames(parsedtxt)
+# To count the number of tokens in the documents
+ntoken(parsedtxt)
+# To count the number or types of tokens
+ntype(parsedtxt)
+```
+
+You may also convert tokens in spacyr, which have tokenizers that are "smarter" than the purely syntactic pattern-based parsers used by quanteda
+
+```{r}
+
+parsedtxt <- spacy_parse(txt, pos = TRUE, tag = TRUE)
+as.tokens(parsedtxt)
+
+```
+
+If you want to select only nouns, using "glob" pattern matching with quanteda, you  may use the tokens_select() function:
+
+```{r}
+
+spacy_parse("The cat in the hat ate green eggs and ham.", pos = TRUE) %>%
+as.tokens(include_pos = "pos") %>%
+tokens_select(pattern = c("*/NOUN"))
+
+```
+
+You may also directly convert the spaCy-based tokens:
+
+```{r}
+
+spacy_tokenize(txt) %>%
+as.tokens()
+
+```
+
+You may also do this for sentences, for which spaCy is very smart:
+
+```{r}
+
+txt2 <- "A Ph.D. in Washington D.C. Mr. Smith went to Washington."
+spacy_tokenize(txt2, what = "sentence") %>%
+as.tokens()
+
+```
+
+This also works well with entity recognition
+
+```{r}
+
+spacy_parse(txt, entity = TRUE) %>%
+entity_consolidate() %>%
+as.tokens() %>%
+head(1)
+
+```
+
+The spacyr package also works well with tidytext
+
+```{r}
+
+unnest_tokens(parsedtxt, word, token) %>%
+dplyr::anti_join(stop_words)
+
+
+```
+
+We can then use POS filtering using dplyr
+
+```{r}
+spacy_parse("The cat in the hat ate green eggs and ham.", pos = TRUE) %>%
+unnest_tokens(word, token) %>%
+dplyr::filter(pos == "NOUN")
+
+
+```
+
+Since the spacy_initialize() attaches a background process of spaCy in python  space, it takes up  a significant amount of memory (especially when using a large language model such as: en_core_web_lg). So, when you no longer need the connection to spaCy, you may remove the spaCy object by calling the spacy_finalize() function.
+
+```{r}
+spacy_finalize()
+
+```
+
+And, when you are ready to reattach the back-end spaCy object, you call spacy_initialize() again.
+
+```{r}
+# spacy_initialize()
+```
+
+# End of Lab
+
+Please Knit and render your R Markdown as a PDF. Submit that PDF into Canvas for Lab 8.
